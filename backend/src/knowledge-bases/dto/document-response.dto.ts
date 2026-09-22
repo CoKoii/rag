@@ -4,4 +4,6 @@ export interface DocumentResponseDto {
   id: string;
   name: string;
   status: DocumentStatus;
+  parsed: boolean;
+  chunkCount: number;
 }

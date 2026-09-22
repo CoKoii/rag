@@ -1,14 +1,13 @@
 import { Injectable } from '@nestjs/common';
-import { mkdir, unlink, writeFile } from 'node:fs/promises';
-import { basename, join, relative, resolve } from 'node:path';
+import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
+import { extname, join, relative, resolve } from 'node:path';
 
 @Injectable()
 export class LocalStorageService {
   private readonly root = resolve(process.env.UPLOAD_DIR ?? 'storage/uploads');
 
   async save(knowledgeBaseId: string, documentId: string, originalName: string, buffer: Buffer) {
-    const safeName = basename(originalName).replace(/[^a-zA-Z0-9._-]/g, '_');
-    const storedName = `${documentId}-${safeName}`;
+    const storedName = `${documentId}${extname(originalName).toLowerCase()}`;
     const directory = join(this.root, knowledgeBaseId);
     const absolutePath = join(directory, storedName);
 
@@ -29,5 +28,11 @@ export class LocalStorageService {
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
     }
+  }
+
+  async read(storagePath: string): Promise<Buffer> {
+    const absolutePath = resolve(this.root, storagePath);
+    if (!absolutePath.startsWith(`${this.root}/`)) throw new Error('非法文件路径');
+    return readFile(absolutePath);
   }
 }

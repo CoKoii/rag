@@ -4,8 +4,11 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   Post,
+  StreamableFile,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
@@ -58,7 +61,52 @@ export class KnowledgeBasesController {
     return this.knowledgeBases.createDocument(knowledgeBaseId, file);
   }
 
+  @Get(':knowledgeBaseId/documents/:documentId/parse')
+  getDocumentParse(
+    @Param('knowledgeBaseId') knowledgeBaseId: string,
+    @Param('documentId') documentId: string,
+  ) {
+    return this.knowledgeBases.getDocumentParse(knowledgeBaseId, documentId);
+  }
+
+  @Post(':knowledgeBaseId/documents/:documentId/parse')
+  parseDocument(
+    @Param('knowledgeBaseId') knowledgeBaseId: string,
+    @Param('documentId') documentId: string,
+  ) {
+    return this.knowledgeBases.parseDocument(knowledgeBaseId, documentId);
+  }
+
+  @Get(':knowledgeBaseId/documents/:documentId/chunks')
+  findChunks(
+    @Param('knowledgeBaseId') knowledgeBaseId: string,
+    @Param('documentId') documentId: string,
+  ) {
+    return this.knowledgeBases.findChunks(knowledgeBaseId, documentId);
+  }
+
+  @Post(':knowledgeBaseId/documents/:documentId/chunks')
+  createChunks(
+    @Param('knowledgeBaseId') knowledgeBaseId: string,
+    @Param('documentId') documentId: string,
+  ) {
+    return this.knowledgeBases.createChunks(knowledgeBaseId, documentId);
+  }
+
+  @Get(':knowledgeBaseId/documents/:documentId/file')
+  async getDocumentFile(
+    @Param('knowledgeBaseId') knowledgeBaseId: string,
+    @Param('documentId') documentId: string,
+  ) {
+    const file = await this.knowledgeBases.getDocumentFile(knowledgeBaseId, documentId);
+    return new StreamableFile(file.buffer, {
+      type: file.contentType,
+      disposition: `inline; filename*=UTF-8''${encodeURIComponent(file.name)}`,
+    });
+  }
+
   @Delete(':knowledgeBaseId/documents/:documentId')
+  @HttpCode(HttpStatus.NO_CONTENT)
   removeDocument(
     @Param('knowledgeBaseId') knowledgeBaseId: string,
     @Param('documentId') documentId: string,

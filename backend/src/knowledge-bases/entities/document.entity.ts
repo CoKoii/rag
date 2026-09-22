@@ -1,4 +1,6 @@
-import { Column, Entity, Index, JoinColumn, ManyToOne, PrimaryColumn } from 'typeorm';
+import { Column, Entity, Index, JoinColumn, ManyToOne, OneToMany, PrimaryColumn } from 'typeorm';
+import type { ParsedDocument } from '../parse/shared/parsed-tree.js';
+import { ChunkEntity } from './chunk.entity.js';
 import { KnowledgeBaseEntity } from './knowledge-base.entity.js';
 
 /** 文档处理状态。后续解析、切片和向量化会继续扩展这些状态。 */
@@ -34,8 +36,16 @@ export class DocumentEntity {
   @Column({ name: 'storage_path', type: 'text', comment: '本地文件相对路径' })
   storagePath!: string;
 
+  /** 文档解析后的统一 JSON 树。 */
+  @Column({ name: 'parsed_data', type: 'jsonb', nullable: true, comment: '文档解析后的统一 JSON 树' })
+  parsedData!: ParsedDocument | null;
+
   /** 当前处理状态。 */
   @Column({ type: 'text', default: DocumentStatus.UPLOADED, comment: '文档处理状态' })
   status!: DocumentStatus;
+
+  /** 文档包含的切片。 */
+  @OneToMany(() => ChunkEntity, (chunk) => chunk.document)
+  chunks!: ChunkEntity[];
 
 }
