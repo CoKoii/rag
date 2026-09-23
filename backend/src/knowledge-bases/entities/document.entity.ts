@@ -1,4 +1,12 @@
-import { Column, Entity, Index, JoinColumn, ManyToOne, OneToMany, PrimaryColumn } from 'typeorm';
+import {
+  Column,
+  Entity,
+  Index,
+  JoinColumn,
+  ManyToOne,
+  OneToMany,
+  PrimaryColumn,
+} from 'typeorm';
 import type { ParsedDocument } from '../parse/shared/parsed-tree.js';
 import { ChunkEntity } from './chunk.entity.js';
 import { KnowledgeBaseEntity } from './knowledge-base.entity.js';
@@ -20,12 +28,20 @@ export class DocumentEntity {
   id!: string;
 
   /** 文档所属知识库。 */
-  @ManyToOne(() => KnowledgeBaseEntity, (knowledgeBase) => knowledgeBase.documents, { onDelete: 'CASCADE' })
+  @ManyToOne(
+    () => KnowledgeBaseEntity,
+    (knowledgeBase) => knowledgeBase.documents,
+    { onDelete: 'CASCADE' },
+  )
   @JoinColumn({ name: 'knowledge_base_id' })
   knowledgeBase!: KnowledgeBaseEntity;
 
   /** 文档所属知识库唯一标识。 */
-  @Column({ name: 'knowledge_base_id', type: 'text', comment: '所属知识库唯一标识' })
+  @Column({
+    name: 'knowledge_base_id',
+    type: 'text',
+    comment: '所属知识库唯一标识',
+  })
   knowledgeBaseId!: string;
 
   /** 用户上传时的原始文件名。 */
@@ -37,15 +53,23 @@ export class DocumentEntity {
   storagePath!: string;
 
   /** 文档解析后的统一 JSON 树。 */
-  @Column({ name: 'parsed_data', type: 'jsonb', nullable: true, comment: '文档解析后的统一 JSON 树' })
+  @Column({
+    name: 'parsed_data',
+    type: 'jsonb',
+    nullable: true,
+    comment: '文档解析后的统一 JSON 树',
+  })
   parsedData!: ParsedDocument | null;
 
   /** 当前处理状态。 */
-  @Column({ type: 'text', default: DocumentStatus.UPLOADED, comment: '文档处理状态' })
+  @Column({
+    type: 'text',
+    default: DocumentStatus.UPLOADED,
+    comment: '文档处理状态',
+  })
   status!: DocumentStatus;
 
   /** 文档包含的切片。 */
   @OneToMany(() => ChunkEntity, (chunk) => chunk.document)
   chunks!: ChunkEntity[];
-
 }

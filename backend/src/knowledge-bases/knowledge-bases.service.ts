@@ -1,4 +1,9 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'node:crypto';
 import { extname } from 'node:path';
@@ -50,40 +55,74 @@ export class KnowledgeBasesService {
 
   async findDocuments(knowledgeBaseId: string): Promise<DocumentResponseDto[]> {
     await this.getKnowledgeBase(knowledgeBaseId);
-    const documents = await this.documentRepository.find({
-      where: { knowledgeBaseId },
-      relations: { chunks: true },
-    });
-    return documents.map((document) => this.toDocumentResponse(document));
+    const [documents, counts] = await Promise.all([
+      this.documentRepository.find({ where: { knowledgeBaseId } }),
+      this.chunkRepository
+        .createQueryBuilder('chunk')
+        .innerJoin('chunk.document', 'document')
+        .select('chunk.documentId', 'documentId')
+        .addSelect('COUNT(*)', 'count')
+        .where('document.knowledgeBaseId = :knowledgeBaseId', {
+          knowledgeBaseId,
+        })
+        .groupBy('chunk.documentId')
+        .getRawMany<{ documentId: string; count: string }>(),
+    ]);
+    const countByDocument = new Map(
+      counts.map(({ documentId, count }) => [documentId, Number(count)]),
+    );
+    return documents.map((document) => ({
+      ...this.toDocumentResponse(document),
+      chunkCount: countByDocument.get(document.id) ?? 0,
+    }));
   }
 
-  async findChunks(knowledgeBaseId: string, documentId: string): Promise<ChunkResponseDto[]> {
+  async findChunks(
+    knowledgeBaseId: string,
+    documentId: string,
+  ): Promise<ChunkResponseDto[]> {
     const document = await this.getDocument(knowledgeBaseId, documentId);
     const chunks = await this.chunkRepository.find({
       where: { documentId },
       order: { index: 'ASC' },
     });
-    return chunks.map((chunk) => this.toChunkResponse(chunk, document.originalName));
+    return chunks.map((chunk) =>
+      this.toChunkResponse(chunk, document.originalName),
+    );
   }
 
-  async createChunks(knowledgeBaseId: string, documentId: string): Promise<ChunkResponseDto[]> {
+  async createChunks(
+    knowledgeBaseId: string,
+    documentId: string,
+  ): Promise<ChunkResponseDto[]> {
     const document = await this.getDocument(knowledgeBaseId, documentId);
     if (!document.parsedData) throw new BadRequestException('请先解析文档');
 
     const drafts = this.chunking.create(document.parsedData);
-    await this.chunkRepository.delete({ documentId });
-    const chunks = drafts.map((draft, index) => this.chunkRepository.create({
-      id: randomUUID(),
-      documentId,
-      index,
-      content: draft.content,
-      sectionPaths: draft.sectionPaths,
-      tokenCount: draft.tokenCount,
-    }));
-    return (await this.chunkRepository.save(chunks)).map((chunk) => this.toChunkResponse(chunk, document.originalName));
+    return this.chunkRepository.manager.transaction(async (manager) => {
+      const repository = manager.getRepository(ChunkEntity);
+      await repository.delete({ documentId });
+      const chunks = drafts.map((draft, index) =>
+        repository.create({
+          id: randomUUID(),
+          documentId,
+          index,
+          content: draft.content,
+          sectionPaths: draft.sectionPaths,
+          tokenCount: draft.tokenCount,
+        }),
+      );
+      const savedChunks = chunks.length ? await repository.save(chunks) : [];
+      return savedChunks.map((chunk) =>
+        this.toChunkResponse(chunk, document.originalName),
+      );
+    });
   }
 
-  async createDocument(knowledgeBaseId: string, file: Express.Multer.File): Promise<DocumentResponseDto> {
+  async createDocument(
+    knowledgeBaseId: string,
+    file: Express.Multer.File,
+  ): Promise<DocumentResponseDto> {
     await this.getKnowledgeBase(knowledgeBaseId);
     const originalName = normalizeFileName(file.originalname);
     const document = this.documentRepository.create({
@@ -103,42 +142,59 @@ export class KnowledgeBasesService {
         file.buffer,
       );
       savedDocument.storagePath = savedFile.storagePath;
-      return this.toDocumentResponse(await this.documentRepository.save(savedDocument));
+      return this.toDocumentResponse(
+        await this.documentRepository.save(savedDocument),
+      );
     } catch (error) {
       await this.documentRepository.delete(savedDocument.id);
       throw error;
     }
   }
 
-  async getDocumentParse(knowledgeBaseId: string, documentId: string): Promise<DocumentParseResponseDto> {
-    return this.toParseResponse(await this.getDocument(knowledgeBaseId, documentId));
+  async getDocumentParse(
+    knowledgeBaseId: string,
+    documentId: string,
+  ): Promise<DocumentParseResponseDto> {
+    return this.toParseResponse(
+      await this.getDocument(knowledgeBaseId, documentId),
+    );
   }
 
-  async parseDocument(knowledgeBaseId: string, documentId: string): Promise<DocumentParseResponseDto> {
+  async parseDocument(
+    knowledgeBaseId: string,
+    documentId: string,
+  ): Promise<DocumentParseResponseDto> {
     const document = await this.getDocument(knowledgeBaseId, documentId);
     if (!this.parser.canParse(document.originalName)) {
       throw new BadRequestException('当前文件格式暂不支持解析');
     }
 
-    document.parsedData = null;
-    await this.chunkRepository.delete({ documentId });
     document.status = DocumentStatus.PROCESSING;
     await this.documentRepository.save(document);
+    const previousParsedData = document.parsedData;
 
     try {
-      document.parsedData = await this.parser.parse(document);
-      document.status = DocumentStatus.READY;
+      const parsedData = await this.parser.parse(document);
+      await this.documentRepository.manager.transaction(async (manager) => {
+        await manager.getRepository(ChunkEntity).delete({ documentId });
+        document.parsedData = parsedData;
+        document.status = DocumentStatus.READY;
+        await manager.getRepository(DocumentEntity).save(document);
+      });
     } catch (error) {
+      document.parsedData = previousParsedData;
       document.status = DocumentStatus.FAILED;
       await this.documentRepository.save(document);
       throw error;
     }
 
-    await this.documentRepository.save(document);
     return this.toParseResponse(document);
   }
 
-  async removeDocument(knowledgeBaseId: string, documentId: string): Promise<void> {
+  async removeDocument(
+    knowledgeBaseId: string,
+    documentId: string,
+  ): Promise<void> {
     const document = await this.documentRepository.findOne({
       where: { id: documentId, knowledgeBaseId },
     });
@@ -190,7 +246,10 @@ export class KnowledgeBasesService {
     };
   }
 
-  private toChunkResponse(chunk: ChunkEntity, documentName: string): ChunkResponseDto {
+  private toChunkResponse(
+    chunk: ChunkEntity,
+    documentName: string,
+  ): ChunkResponseDto {
     return {
       id: chunk.id,
       documentId: chunk.documentId,

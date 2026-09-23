@@ -11,7 +11,13 @@ import { ChunkingService } from './chunking/chunking.service.js';
 import { QwenImageUnderstandingService } from './parse/qwen-image-understanding.service.js';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([KnowledgeBaseEntity, DocumentEntity, ChunkEntity])],
+  imports: [
+    TypeOrmModule.forFeature([
+      KnowledgeBaseEntity,
+      DocumentEntity,
+      ChunkEntity,
+    ]),
+  ],
   controllers: [KnowledgeBasesController],
   providers: [
     KnowledgeBasesService,

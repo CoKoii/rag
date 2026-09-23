@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { basename, extname } from 'node:path';
 import { Repository } from 'typeorm';
@@ -9,9 +9,18 @@ import { QwenImageUnderstandingService } from './qwen-image-understanding.servic
 import type { DocumentParser } from './shared/document-parser.js';
 import type { ParsedDocument, ParsedNode } from './shared/parsed-tree.js';
 
+interface ImageTask {
+  nodes: ParsedNode[];
+  label: string;
+  describe: () => Promise<string>;
+}
+
+const imageConcurrency = 3;
+
 /** 解析器入口：按文件扩展名选择具体解析器。 */
 @Injectable()
 export class DocumentParseService {
+  private readonly logger = new Logger(DocumentParseService.name);
   private readonly markdownParser = new MarkdownParser();
 
   private readonly parsers = new Map<string, DocumentParser>([
@@ -80,53 +89,105 @@ export class DocumentParseService {
     parsed: ParsedDocument,
     knowledgeBaseId: string,
   ): Promise<void> {
-    const candidates = await this.documents.find({
-      where: { knowledgeBaseId },
-      select: { originalName: true, storagePath: true },
-    });
+    const nodes = [...this.imagesIn(parsed)];
+    const localNames = new Set(
+      nodes.flatMap((node) => {
+        const src = node.attrs.src;
+        return typeof src === 'string' && !/^(?:[a-z]+:|\/\/)/iu.test(src)
+          ? [this.fileNameFromSource(src).toLocaleLowerCase()]
+          : [];
+      }),
+    );
     const images = new Map<string, string>();
-    for (const candidate of candidates) {
-      const extension = this.extensionOf(candidate.originalName);
-      if (this.imageExtensions.has(extension)) {
-        images.set(
-          candidate.originalName.toLocaleLowerCase(),
-          candidate.storagePath,
-        );
+
+    if (localNames.size) {
+      const candidates = await this.documents.find({
+        where: { knowledgeBaseId },
+        select: { originalName: true, storagePath: true },
+      });
+      for (const candidate of candidates) {
+        const name = candidate.originalName.toLocaleLowerCase();
+        if (
+          localNames.has(name) &&
+          this.imageExtensions.has(this.extensionOf(name))
+        ) {
+          images.set(name, candidate.storagePath);
+        }
       }
     }
 
-    await this.visitImages(parsed, async (node) => {
+    const tasks = new Map<string, ImageTask>();
+
+    for (const node of nodes) {
       const src = node.attrs.src;
-      if (typeof src !== 'string' || /^(?:[a-z]+:|\/\/)/iu.test(src)) return;
-
-      let fileName: string;
-      try {
-        fileName = basename(
-          decodeURIComponent(src.split(/[?#]/u, 1)[0] ?? src),
-        );
-      } catch {
-        fileName = basename(src.split(/[?#]/u, 1)[0] ?? src);
+      if (typeof src !== 'string') continue;
+      if (/^https:\/\//iu.test(src)) {
+        const url = new URL(src);
+        const key = `url:${url.href}`;
+        const task = tasks.get(key) ?? {
+          nodes: [],
+          label: `${url.host}${url.pathname}`,
+          describe: () => this.imageUnderstanding.describeUrl(url.href),
+        };
+        task.nodes.push(node);
+        tasks.set(key, task);
+        continue;
       }
-      const storagePath = images.get(fileName.toLocaleLowerCase());
-      if (!storagePath) return;
+      if (/^(?:[a-z]+:|\/\/)/iu.test(src)) continue;
 
-      const image = await this.readImage(
-        storagePath,
-        this.extensionOf(fileName),
+      const fileName = this.fileNameFromSource(src);
+      const storagePath = images.get(fileName.toLocaleLowerCase());
+      if (!storagePath) continue;
+
+      const task = tasks.get(storagePath) ?? {
+        nodes: [],
+        label: fileName,
+        describe: async () => {
+          const image = await this.readImage(
+            storagePath,
+            this.extensionOf(fileName),
+          );
+          return this.imageUnderstanding.describe(image.buffer, image.mimeType);
+        },
+      };
+      task.nodes.push(node);
+      tasks.set(storagePath, task);
+    }
+
+    const uniqueTasks = [...tasks.values()];
+    for (let index = 0; index < uniqueTasks.length; index += imageConcurrency) {
+      await Promise.all(
+        uniqueTasks.slice(index, index + imageConcurrency).map(async (task) => {
+          const startedAt = Date.now();
+          try {
+            const description = await task.describe();
+            for (const node of task.nodes) node.attrs.description = description;
+            this.logger.log(
+              `图片解析完成：${task.label}，${Date.now() - startedAt}ms`,
+            );
+          } catch (error) {
+            this.logger.warn(
+              `图片解析失败：${task.label}，${Date.now() - startedAt}ms`,
+            );
+            throw error;
+          }
+        }),
       );
-      node.attrs.description = await this.imageUnderstanding.describe(
-        image.buffer,
-        image.mimeType,
-      );
-    });
+    }
   }
 
-  private async visitImages(
-    node: ParsedNode,
-    visit: (node: ParsedNode) => Promise<void>,
-  ): Promise<void> {
-    if (node.type === 'image') await visit(node);
-    for (const child of node.children) await this.visitImages(child, visit);
+  private *imagesIn(node: ParsedNode): IterableIterator<ParsedNode> {
+    if (node.type === 'image') yield node;
+    for (const child of node.children) yield* this.imagesIn(child);
+  }
+
+  private fileNameFromSource(src: string): string {
+    const path = src.split(/[?#]/u, 1)[0] ?? src;
+    try {
+      return basename(decodeURIComponent(path));
+    } catch {
+      return basename(path);
+    }
   }
 
   private async readImage(storagePath: string, extension: string) {
