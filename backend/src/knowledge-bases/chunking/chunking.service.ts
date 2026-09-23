@@ -107,9 +107,10 @@ export class ChunkingService {
 
     for (const sentence of sentences.length ? sentences : [unit.content]) {
       if (this.tokenCount(sentence) > contentLimit) {
+        const overlap = this.overlapText(current);
         if (current) parts.push(this.unsplittable(unit, current));
         current = '';
-        parts.push(...this.splitTokens(unit, sentence, contentLimit));
+        parts.push(...this.splitTokens(unit, overlap ? `${overlap} ${sentence}` : sentence, contentLimit));
         continue;
       }
 
@@ -222,7 +223,7 @@ export class ChunkingService {
   }
 
   private mergeKey(sectionPath: string[]): string {
-    return sectionPath.slice(0, 2).join('\u0000');
+    return sectionPath.slice(0, -1).join('\u0000');
   }
 
   private addPath(paths: string[][], path: string[]): string[][] {
