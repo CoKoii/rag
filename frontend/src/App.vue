@@ -133,7 +133,7 @@ const selectFiles = (event: Event) => {
         ref="fileInput"
         class="hidden-input"
         type="file"
-        accept=".txt,.md,.pdf"
+        accept=".txt,.md,.markdown,.pdf,.png,.jpg,.jpeg,.webp"
         multiple
         @change="selectFiles"
       />

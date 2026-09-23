@@ -17,7 +17,7 @@ import { memoryStorage } from 'multer';
 import { CreateKnowledgeBaseDto } from './dto/create-knowledge-base.dto.js';
 import { KnowledgeBasesService } from './knowledge-bases.service.js';
 
-const allowedExtensions = new Set(['txt', 'md', 'pdf']);
+const allowedExtensions = new Set(['txt', 'md', 'markdown', 'pdf', 'png', 'jpg', 'jpeg', 'webp']);
 
 @Controller('api/knowledge-bases')
 export class KnowledgeBasesController {
@@ -46,7 +46,7 @@ export class KnowledgeBasesController {
       fileFilter: (_request, file, callback) => {
         const extension = file.originalname.split('.').pop()?.toLowerCase() ?? '';
         if (!allowedExtensions.has(extension)) {
-          callback(new BadRequestException('只支持 TXT、Markdown 和 PDF 文件'), false);
+          callback(new BadRequestException('支持 TXT、Markdown、PDF、PNG、JPG、JPEG 和 WebP 文件'), false);
           return;
         }
         callback(null, true);

@@ -8,10 +8,17 @@ import { KnowledgeBasesService } from './knowledge-bases.service.js';
 import { LocalStorageService } from './local-storage.service.js';
 import { DocumentParseService } from './parse/parse.service.js';
 import { ChunkingService } from './chunking/chunking.service.js';
+import { QwenImageUnderstandingService } from './parse/qwen-image-understanding.service.js';
 
 @Module({
   imports: [TypeOrmModule.forFeature([KnowledgeBaseEntity, DocumentEntity, ChunkEntity])],
   controllers: [KnowledgeBasesController],
-  providers: [KnowledgeBasesService, LocalStorageService, DocumentParseService, ChunkingService],
+  providers: [
+    KnowledgeBasesService,
+    LocalStorageService,
+    DocumentParseService,
+    ChunkingService,
+    QwenImageUnderstandingService,
+  ],
 })
 export class KnowledgeBasesModule {}

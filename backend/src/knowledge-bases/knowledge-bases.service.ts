@@ -117,7 +117,7 @@ export class KnowledgeBasesService {
   async parseDocument(knowledgeBaseId: string, documentId: string): Promise<DocumentParseResponseDto> {
     const document = await this.getDocument(knowledgeBaseId, documentId);
     if (!this.parser.canParse(document.originalName)) {
-      throw new BadRequestException('当前只支持解析 Markdown 文件');
+      throw new BadRequestException('当前文件格式暂不支持解析');
     }
 
     document.parsedData = null;

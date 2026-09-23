@@ -146,7 +146,11 @@ export class ChunkingService {
 
   private renderText(node: ParsedNode): string {
     if (node.type === 'code-block' && node.text !== undefined) return node.text;
-    if (node.type === 'image') return typeof node.attrs.alt === 'string' ? node.attrs.alt : '';
+    if (node.type === 'image') {
+      const description = typeof node.attrs.description === 'string' ? node.attrs.description : '';
+      const alt = typeof node.attrs.alt === 'string' ? node.attrs.alt : '';
+      return [description, alt].filter(Boolean).join('\n');
+    }
     if (node.type === 'list') return this.renderList(node);
     if (node.type === 'list-item') return node.children.map((child) => this.renderText(child)).join('\n');
     if (node.type === 'line-break') return '\n';
