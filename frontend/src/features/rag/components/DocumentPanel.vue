@@ -27,7 +27,7 @@ const statusLabels: Record<DocumentStatus, string> = {
   failed: '解析失败',
 }
 
-const canParse = (document: DocumentItem) => /\.(md|markdown|png|jpe?g|webp)$/i.test(document.name)
+const canParse = (document: DocumentItem) => /\.(md|markdown)$/i.test(document.name)
 
 const dropFiles = (event: DragEvent) => {
   event.preventDefault()
@@ -40,7 +40,7 @@ const dropFiles = (event: DragEvent) => {
     <div class="panel-heading">
       <div>
         <h2>文件列表</h2>
-        <p>上传 Markdown 和图片后，可解析并切片。</p>
+        <p>上传 Markdown 文档后，可解析、切片并向量化。</p>
       </div>
     </div>
     <div v-if="loading" class="empty-state compact">
@@ -64,7 +64,7 @@ const dropFiles = (event: DragEvent) => {
                 ? '点击或拖拽文件到这里上传'
                 : '请先创建知识库'
           }}</strong
-          ><small>支持 TXT、Markdown、PDF、PNG、JPG、JPEG、WebP，单个文件最大 10 MB</small></span
+          ><small>支持 Markdown，单个文件最大 10 MB</small></span
         >
       </button>
       <div v-if="documents.length" class="document-table-wrap">
@@ -138,7 +138,7 @@ const dropFiles = (event: DragEvent) => {
       <div v-else class="empty-state">
         <strong>还没有文件</strong
         ><span>{{
-          hasKnowledgeBase ? '上传 Markdown 文档或图片开始处理。' : '点击左侧加号创建知识库。'
+          hasKnowledgeBase ? '上传 Markdown 文档开始处理。' : '点击左侧加号创建知识库。'
         }}</span>
       </div>
     </template>

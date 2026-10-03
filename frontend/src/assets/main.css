@@ -627,6 +627,21 @@ h2 {
   line-height: 1.8;
   white-space: pre-wrap;
 }
+.chunk-images {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+  margin-top: 12px;
+}
+.chunk-images img {
+  display: block;
+  max-width: min(100%, 520px);
+  max-height: 480px;
+  border: 1px solid #e2eae6;
+  border-radius: 4px;
+  object-fit: contain;
+  object-position: left top;
+}
 .back-button {
   border: 0;
   padding: 0;

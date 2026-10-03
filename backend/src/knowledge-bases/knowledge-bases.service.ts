@@ -6,7 +6,6 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'node:crypto';
-import { extname } from 'node:path';
 import { Repository } from 'typeorm';
 import { CreateKnowledgeBaseDto } from './dto/create-knowledge-base.dto.js';
 import { DocumentParseResponseDto } from './dto/document-parse-response.dto.js';
@@ -103,47 +102,72 @@ export class KnowledgeBasesService {
     if (!document.parsedData) throw new BadRequestException('请先解析文档');
 
     const drafts = this.chunking.create(document.parsedData);
-    return this.chunkRepository.manager.transaction(async (manager) => {
-      const repository = manager.getRepository(ChunkEntity);
-      await repository.delete({ documentId });
-      const chunks = drafts.map((draft, index) =>
-        repository.create({
-          id: randomUUID(),
-          documentId,
-          index,
-          content: draft.content,
-        }),
-      );
-      const savedChunks = chunks.length ? await repository.save(chunks) : [];
-      return savedChunks.map((chunk) =>
-        this.toChunkResponse(chunk, document.originalName),
-      );
-    });
+    const savedChunks = await this.chunkRepository.manager.transaction(
+      async (manager) => {
+        const repository = manager.getRepository(ChunkEntity);
+        await repository.delete({ documentId });
+        const chunks = drafts.map((draft, index) =>
+          repository.create({
+            id: randomUUID(),
+            documentId,
+            index,
+            content: draft.content,
+            imageSources: draft.imageSources,
+          }),
+        );
+        return chunks.length ? repository.save(chunks) : [];
+      },
+    );
+    await this.qdrant.deleteDocument(documentId);
+    return savedChunks.map((chunk) =>
+      this.toChunkResponse(chunk, document.originalName),
+    );
   }
 
   async embedDocument(
     knowledgeBaseId: string,
     documentId: string,
   ): Promise<{ count: number }> {
-    const document = await this.getDocument(knowledgeBaseId, documentId);
+    await this.getDocument(knowledgeBaseId, documentId);
     const chunks = await this.chunkRepository.find({
       where: { documentId },
       order: { index: 'ASC' },
     });
     if (!chunks.length) throw new BadRequestException('请先切片文档');
 
-    const points = await Promise.all(
-      chunks.map(async (chunk) => ({
-        id: chunk.id,
-        vector: isImageFile(document.originalName)
-          ? await this.embedding.embedImage(
-              await this.storage.read(document.storagePath),
-              contentTypeOf(document.originalName),
-            )
-          : await this.embedding.embedText(chunk.content),
-        content: chunk.content,
-      })),
-    );
+    const points = (
+      await Promise.all(
+        chunks.map(async (chunk) => {
+          if (!chunk.imageSources.length) {
+            return [
+              {
+                id: chunk.id,
+                vector: await this.embedding.embedText(chunk.content),
+                documentId,
+                chunkId: chunk.id,
+                content: chunk.content,
+              },
+            ];
+          }
+
+          return Promise.all(
+            chunk.imageSources.map(async (source, index) => {
+              const result = await this.embedding.embedTextImage(
+                chunk.content,
+                source,
+              );
+              return {
+                id: index === 0 ? chunk.id : randomUUID(),
+                vector: result.vector,
+                documentId,
+                chunkId: chunk.id,
+                content: result.content,
+              };
+            }),
+          );
+        }),
+      )
+    ).flat();
     await this.qdrant.replaceDocument(documentId, points);
     return { count: points.length };
   }
@@ -203,7 +227,7 @@ export class KnowledgeBasesService {
     const previousParsedData = document.parsedData;
 
     try {
-      const parsedData = await this.parser.parse(document);
+      const parsedData = await this.parser.parse(document.storagePath);
       await this.documentRepository.manager.transaction(async (manager) => {
         await manager.getRepository(ChunkEntity).delete({ documentId });
         document.parsedData = parsedData;
@@ -217,6 +241,7 @@ export class KnowledgeBasesService {
       throw error;
     }
 
+    await this.qdrant.deleteDocument(documentId);
     return this.toParseResponse(document);
   }
 
@@ -229,6 +254,7 @@ export class KnowledgeBasesService {
     });
     if (!document) throw new NotFoundException('文件不存在');
 
+    await this.qdrant.deleteDocument(documentId);
     await this.storage.remove(document.storagePath);
     await this.documentRepository.remove(document);
   }
@@ -237,7 +263,7 @@ export class KnowledgeBasesService {
     const document = await this.getDocument(knowledgeBaseId, documentId);
     return {
       name: document.originalName,
-      contentType: contentTypeOf(document.originalName),
+      contentType: 'text/markdown; charset=utf-8',
       buffer: await this.storage.read(document.storagePath),
     };
   }
@@ -285,6 +311,7 @@ export class KnowledgeBasesService {
       documentName,
       index: chunk.index,
       content: chunk.content,
+      imageSources: chunk.imageSources,
     };
   }
 }
@@ -295,26 +322,4 @@ const normalizeFileName = (name: string): string => {
   }
   const decoded = Buffer.from(name, 'latin1').toString('utf8');
   return decoded.includes('\ufffd') ? name : decoded;
-};
-
-const isImageFile = (name: string): boolean =>
-  ['.png', '.jpg', '.jpeg', '.webp'].includes(extname(name).toLowerCase());
-
-const contentTypeOf = (name: string): string => {
-  switch (extname(name).toLowerCase()) {
-    case '.md':
-    case '.markdown':
-      return 'text/markdown; charset=utf-8';
-    case '.txt':
-      return 'text/plain; charset=utf-8';
-    case '.png':
-      return 'image/png';
-    case '.jpg':
-    case '.jpeg':
-      return 'image/jpeg';
-    case '.webp':
-      return 'image/webp';
-    default:
-      return 'application/octet-stream';
-  }
 };

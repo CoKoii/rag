@@ -4,4 +4,5 @@ export interface ChunkResponseDto {
   documentName: string;
   index: number;
   content: string;
+  imageSources: string[];
 }

@@ -20,7 +20,7 @@ const emit = defineEmits<{
       <div>
         <button class="back-button" type="button" @click="emit('back')">← 返回文件列表</button>
         <h2>{{ documentName || '文件切片' }}</h2>
-        <p>切片列表仅展示正文内容。</p>
+        <p>切片正文和内嵌图片分别展示。</p>
       </div>
       <label class="search-field"
         ><span>⌕</span
@@ -35,6 +35,16 @@ const emit = defineEmits<{
     <div v-else-if="chunks.length" class="chunk-list">
       <article v-for="chunk in chunks" :key="chunk.id" class="chunk-item">
         <p>{{ chunk.content }}</p>
+        <div v-if="chunk.imageSources.length" class="chunk-images">
+          <img
+            v-for="source in chunk.imageSources"
+            :key="source"
+            :src="source"
+            alt="Markdown 内嵌图片"
+            loading="lazy"
+            referrerpolicy="no-referrer"
+          />
+        </div>
       </article>
     </div>
     <div v-else class="empty-state">

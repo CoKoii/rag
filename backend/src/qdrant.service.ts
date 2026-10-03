@@ -3,6 +3,14 @@ import { QdrantClient } from '@qdrant/js-client-rest';
 
 const embeddingVectorSize = 2560;
 
+export interface VectorPoint {
+  id: string;
+  vector: number[];
+  documentId: string;
+  chunkId: string;
+  content: string;
+}
+
 @Injectable()
 export class QdrantService implements OnModuleInit {
   private readonly logger = new Logger(QdrantService.name);
@@ -19,35 +27,50 @@ export class QdrantService implements OnModuleInit {
     );
   }
 
+  async deleteDocument(documentId: string): Promise<void> {
+    if (await this.collectionExists()) {
+      await this.deleteDocumentPoints(documentId);
+    }
+  }
+
   async replaceDocument(
     documentId: string,
-    points: Array<{ id: string; vector: number[]; content: string }>,
+    points: VectorPoint[],
   ): Promise<void> {
+    if (points.some(({ vector }) => vector.length !== embeddingVectorSize)) {
+      throw new Error(
+        `Expected ${embeddingVectorSize}-dimension qwen3-vl-embedding vectors`,
+      );
+    }
+    if (!(await this.collectionExists())) {
+      if (!points.length) return;
+      await this.client.createCollection(this.collection, {
+        vectors: { size: embeddingVectorSize, distance: 'Cosine' },
+      });
+    } else {
+      await this.deleteDocumentPoints(documentId);
+    }
     if (!points.length) return;
-    await this.ensureCollection(points[0].vector.length);
-    await this.client.delete(this.collection, {
-      wait: true,
-      filter: { must: [{ key: 'documentId', match: { value: documentId } }] },
-    });
+
     await this.client.upsert(this.collection, {
       wait: true,
-      points: points.map(({ id, vector, content }) => ({
+      points: points.map(({ id, vector, documentId, chunkId, content }) => ({
         id,
         vector,
-        payload: { documentId, content },
+        payload: { documentId, chunkId, content },
       })),
     });
   }
 
-  private async ensureCollection(size: number): Promise<void> {
-    if (size !== embeddingVectorSize) {
-      throw new Error(`Unexpected qwen3-vl-embedding dimension: ${size}`);
-    }
-    const collections = await this.client.getCollections();
-    if (collections.collections.some(({ name }) => name === this.collection))
-      return;
-    await this.client.createCollection(this.collection, {
-      vectors: { size, distance: 'Cosine' },
+  private async deleteDocumentPoints(documentId: string): Promise<void> {
+    await this.client.delete(this.collection, {
+      wait: true,
+      filter: { must: [{ key: 'documentId', match: { value: documentId } }] },
     });
+  }
+
+  private async collectionExists(): Promise<boolean> {
+    const { collections } = await this.client.getCollections();
+    return collections.some(({ name }) => name === this.collection);
   }
 }

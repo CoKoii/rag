@@ -20,6 +20,7 @@ export interface ChunkItem {
   documentName: string
   index: number
   content: string
+  imageSources: string[]
 }
 
 export interface ParsedNode {
