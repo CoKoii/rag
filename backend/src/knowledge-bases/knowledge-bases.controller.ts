@@ -17,7 +17,14 @@ import { memoryStorage } from 'multer';
 import { CreateKnowledgeBaseDto } from './dto/create-knowledge-base.dto.js';
 import { KnowledgeBasesService } from './knowledge-bases.service.js';
 
-const allowedExtensions = new Set(['txt', 'md', 'markdown', 'pdf', 'png', 'jpg', 'jpeg', 'webp']);
+const allowedExtensions = new Set([
+  'md',
+  'markdown',
+  'png',
+  'jpg',
+  'jpeg',
+  'webp',
+]);
 
 @Controller('api/knowledge-bases')
 export class KnowledgeBasesController {
@@ -44,9 +51,15 @@ export class KnowledgeBasesController {
       storage: memoryStorage(),
       limits: { fileSize: 10 * 1024 * 1024 },
       fileFilter: (_request, file, callback) => {
-        const extension = file.originalname.split('.').pop()?.toLowerCase() ?? '';
+        const extension =
+          file.originalname.split('.').pop()?.toLowerCase() ?? '';
         if (!allowedExtensions.has(extension)) {
-          callback(new BadRequestException('支持 TXT、Markdown、PDF、PNG、JPG、JPEG 和 WebP 文件'), false);
+          callback(
+            new BadRequestException(
+              '支持 Markdown、PNG、JPG、JPEG 和 WebP 文件',
+            ),
+            false,
+          );
           return;
         }
         callback(null, true);
@@ -93,12 +106,23 @@ export class KnowledgeBasesController {
     return this.knowledgeBases.createChunks(knowledgeBaseId, documentId);
   }
 
+  @Post(':knowledgeBaseId/documents/:documentId/embedding')
+  embedDocument(
+    @Param('knowledgeBaseId') knowledgeBaseId: string,
+    @Param('documentId') documentId: string,
+  ) {
+    return this.knowledgeBases.embedDocument(knowledgeBaseId, documentId);
+  }
+
   @Get(':knowledgeBaseId/documents/:documentId/file')
   async getDocumentFile(
     @Param('knowledgeBaseId') knowledgeBaseId: string,
     @Param('documentId') documentId: string,
   ) {
-    const file = await this.knowledgeBases.getDocumentFile(knowledgeBaseId, documentId);
+    const file = await this.knowledgeBases.getDocumentFile(
+      knowledgeBaseId,
+      documentId,
+    );
     return new StreamableFile(file.buffer, {
       type: file.contentType,
       disposition: `inline; filename*=UTF-8''${encodeURIComponent(file.name)}`,

@@ -11,7 +11,7 @@ import type { ParsedDocument } from '../parse/shared/parsed-tree.js';
 import { ChunkEntity } from './chunk.entity.js';
 import { KnowledgeBaseEntity } from './knowledge-base.entity.js';
 
-/** 文档处理状态。后续解析、切片和向量化会继续扩展这些状态。 */
+/** 文档处理状态。 */
 export enum DocumentStatus {
   UPLOADED = 'uploaded',
   PROCESSING = 'processing',

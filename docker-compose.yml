@@ -1,21 +1,14 @@
 services:
-  postgres:
-    image: pgvector/pgvector:pg16
-    container_name: rag-postgres
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: rag-qdrant
     restart: unless-stopped
-    environment:
-      POSTGRES_DB: rag
-      POSTGRES_USER: rag
-      POSTGRES_PASSWORD: rag
     ports:
-      - "5432:5432"
+      - "6333:6333"
+      - "6334:6334"
     volumes:
-      - rag-postgres-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U rag -d rag"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
+      - rag-qdrant-data:/qdrant/storage
 
 volumes:
   rag-postgres-data:
+  rag-qdrant-data:

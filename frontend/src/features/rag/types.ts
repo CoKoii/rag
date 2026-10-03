@@ -20,8 +20,6 @@ export interface ChunkItem {
   documentName: string
   index: number
   content: string
-  sectionPaths: string[][]
-  tokenCount: number
 }
 
 export interface ParsedNode {

@@ -6,6 +6,7 @@ defineProps<{
   loading: boolean
   uploading: boolean
   hasKnowledgeBase: boolean
+  embeddingDocumentId?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -15,6 +16,7 @@ const emit = defineEmits<{
   original: [document: DocumentItem]
   parse: [document: DocumentItem]
   chunk: [document: DocumentItem]
+  embedding: [document: DocumentItem]
   remove: [document: DocumentItem]
 }>()
 
@@ -110,6 +112,15 @@ const dropFiles = (event: DragEvent) => {
                     @click="emit('chunk', document)"
                   >
                     {{ document.chunkCount ? '重新切片' : '切片' }}
+                  </button>
+                  <button
+                    class="text-button"
+                    type="button"
+                    :disabled="!document.chunkCount || embeddingDocumentId === document.id"
+                    :title="document.chunkCount ? '' : '请先切片文件'"
+                    @click="emit('embedding', document)"
+                  >
+                    {{ embeddingDocumentId === document.id ? 'Embedding…' : 'Embedding' }}
                   </button>
                   <button
                     class="text-button danger"

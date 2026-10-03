@@ -8,7 +8,8 @@ import { KnowledgeBasesService } from './knowledge-bases.service.js';
 import { LocalStorageService } from './local-storage.service.js';
 import { DocumentParseService } from './parse/parse.service.js';
 import { ChunkingService } from './chunking/chunking.service.js';
-import { QwenImageUnderstandingService } from './parse/qwen-image-understanding.service.js';
+import { QdrantModule } from '../qdrant.module.js';
+import { QwenEmbeddingService } from './embedding/qwen-embedding.service.js';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { QwenImageUnderstandingService } from './parse/qwen-image-understanding.
       DocumentEntity,
       ChunkEntity,
     ]),
+    QdrantModule,
   ],
   controllers: [KnowledgeBasesController],
   providers: [
@@ -24,7 +26,7 @@ import { QwenImageUnderstandingService } from './parse/qwen-image-understanding.
     LocalStorageService,
     DocumentParseService,
     ChunkingService,
-    QwenImageUnderstandingService,
+    QwenEmbeddingService,
   ],
 })
 export class KnowledgeBasesModule {}

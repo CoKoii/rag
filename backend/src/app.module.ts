@@ -4,6 +4,7 @@ import { loadEnvFile } from 'node:process';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { KnowledgeBasesModule } from './knowledge-bases/knowledge-bases.module.js';
+import { QdrantModule } from './qdrant.module.js';
 
 try {
   loadEnvFile();
@@ -20,6 +21,7 @@ try {
       synchronize: true,
     }),
     KnowledgeBasesModule,
+    QdrantModule,
   ],
   controllers: [AppController],
   providers: [AppService],

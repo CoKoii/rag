@@ -1,11 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { decode, encode } from 'gpt-tokenizer';
-import type { ParsedDocument, ParsedNode } from '../parse/shared/parsed-tree.js';
+import type {
+  ParsedDocument,
+  ParsedNode,
+} from '../parse/shared/parsed-tree.js';
 
 export interface ChunkDraft {
   content: string;
-  sectionPaths: string[][];
-  tokenCount: number;
 }
 
 interface ChunkUnit {
@@ -17,7 +18,7 @@ interface ChunkUnit {
 
 interface WorkingChunk {
   content: string;
-  sectionPaths: string[][];
+  sectionPathKeys: string[];
   lastSectionPath: string[];
   mergeKey: string;
   mergeable: boolean;
@@ -47,11 +48,18 @@ export class ChunkingService {
         continue;
       }
 
-      const content = this.withSectionContext(unit.content, unit.sectionPath, current.lastSectionPath);
+      const content = this.withSectionContext(
+        unit.content,
+        unit.sectionPath,
+        current.lastSectionPath,
+      );
       const merged = `${current.content}\n\n${content}`;
       if (this.tokenCount(merged) <= this.maxTokens) {
         current.content = merged;
-        current.sectionPaths = this.addPath(current.sectionPaths, unit.sectionPath);
+        current.sectionPathKeys = this.addPathKey(
+          current.sectionPathKeys,
+          unit.sectionPath,
+        );
         current.lastSectionPath = unit.sectionPath;
         continue;
       }
@@ -76,9 +84,10 @@ export class ChunkingService {
         continue;
       }
 
-      const contents = node.type === 'table'
-        ? this.renderTableRows(node)
-        : [this.renderText(node).trim()];
+      const contents =
+        node.type === 'table'
+          ? this.renderTableRows(node)
+          : [this.renderText(node).trim()];
 
       for (const content of contents.filter(Boolean)) {
         const unit = {
@@ -95,7 +104,10 @@ export class ChunkingService {
   }
 
   private splitUnit(unit: ChunkUnit): ChunkUnit[] {
-    const contentLimit = Math.max(1, this.maxTokens - this.tokenCount(this.sectionContext(unit.sectionPath)));
+    const contentLimit = Math.max(
+      1,
+      this.maxTokens - this.tokenCount(this.sectionContext(unit.sectionPath)),
+    );
     if (this.tokenCount(unit.content) <= contentLimit) return [unit];
 
     const sentences = unit.content
@@ -110,7 +122,13 @@ export class ChunkingService {
         const overlap = this.overlapText(current);
         if (current) parts.push(this.unsplittable(unit, current));
         current = '';
-        parts.push(...this.splitTokens(unit, overlap ? `${overlap} ${sentence}` : sentence, contentLimit));
+        parts.push(
+          ...this.splitTokens(
+            unit,
+            overlap ? `${overlap} ${sentence}` : sentence,
+            contentLimit,
+          ),
+        );
         continue;
       }
 
@@ -122,16 +140,21 @@ export class ChunkingService {
 
       if (current) parts.push(this.unsplittable(unit, current));
       const overlap = this.overlapText(current);
-      current = this.tokenCount(`${overlap} ${sentence}`) <= contentLimit
-        ? `${overlap} ${sentence}`
-        : sentence;
+      current =
+        this.tokenCount(`${overlap} ${sentence}`) <= contentLimit
+          ? `${overlap} ${sentence}`
+          : sentence;
     }
 
     if (current) parts.push(this.unsplittable(unit, current));
     return parts;
   }
 
-  private splitTokens(unit: ChunkUnit, content: string, contentLimit: number): ChunkUnit[] {
+  private splitTokens(
+    unit: ChunkUnit,
+    content: string,
+    contentLimit: number,
+  ): ChunkUnit[] {
     const tokens = encode(content);
     const step = Math.max(1, contentLimit - this.overlapTokens);
     const parts: ChunkUnit[] = [];
@@ -147,16 +170,21 @@ export class ChunkingService {
   private renderText(node: ParsedNode): string {
     if (node.type === 'code-block' && node.text !== undefined) return node.text;
     if (node.type === 'image') {
-      const description = typeof node.attrs.description === 'string' ? node.attrs.description : '';
-      const alt = typeof node.attrs.alt === 'string' ? node.attrs.alt : '';
-      return [description, alt].filter(Boolean).join('\n');
+      return [
+        typeof node.attrs.src === 'string' ? node.attrs.src : '',
+      ]
+        .filter(Boolean)
+        .join('\n');
     }
     if (node.type === 'list') return this.renderList(node);
-    if (node.type === 'list-item') return node.children.map((child) => this.renderText(child)).join('\n');
+    if (node.type === 'list-item')
+      return node.children.map((child) => this.renderText(child)).join('\n');
     if (node.type === 'line-break') return '\n';
     if (node.type === 'thematic-break') return '';
-    if (node.type === 'table-row') return node.children.map((child) => this.renderText(child)).join(' | ');
-    if (node.type === 'table-cell') return node.children.map((child) => this.renderText(child)).join('');
+    if (node.type === 'table-row')
+      return node.children.map((child) => this.renderText(child)).join(' | ');
+    if (node.type === 'table-cell')
+      return node.children.map((child) => this.renderText(child)).join('');
     if (node.text !== undefined) return node.text;
     return node.children.map((child) => this.renderText(child)).join('');
   }
@@ -164,10 +192,12 @@ export class ChunkingService {
   private renderList(node: ParsedNode): string {
     const ordered = node.attrs.ordered === true;
     const start = this.numberAttr(node.attrs.start, 1);
-    return node.children.map((child, index) => {
-      const marker = ordered ? `${start + index}.` : '-';
-      return `${marker} ${this.renderText(child).trim()}`;
-    }).join('\n');
+    return node.children
+      .map((child, index) => {
+        const marker = ordered ? `${start + index}.` : '-';
+        return `${marker} ${this.renderText(child).trim()}`;
+      })
+      .join('\n');
   }
 
   private renderTableRows(node: ParsedNode): string[] {
@@ -189,15 +219,18 @@ export class ChunkingService {
   }
 
   private canMerge(chunk: WorkingChunk, unit: ChunkUnit): boolean {
-    if (!chunk.mergeable || !unit.mergeable || chunk.mergeKey !== unit.mergeKey) return false;
-    return this.samePath(chunk.lastSectionPath, unit.sectionPath)
-      || chunk.sectionPaths.length < this.maxSectionPaths;
+    if (!chunk.mergeable || !unit.mergeable || chunk.mergeKey !== unit.mergeKey)
+      return false;
+    return (
+      this.samePath(chunk.lastSectionPath, unit.sectionPath) ||
+      chunk.sectionPathKeys.length < this.maxSectionPaths
+    );
   }
 
   private startChunk(unit: ChunkUnit): WorkingChunk {
     return {
       content: this.withSectionContext(unit.content, unit.sectionPath),
-      sectionPaths: [unit.sectionPath],
+      sectionPathKeys: [this.pathKey(unit.sectionPath)],
       lastSectionPath: unit.sectionPath,
       mergeKey: unit.mergeKey,
       mergeable: unit.mergeable,
@@ -211,13 +244,16 @@ export class ChunkingService {
   private toDraft(chunk: WorkingChunk): ChunkDraft {
     return {
       content: chunk.content,
-      sectionPaths: chunk.sectionPaths,
-      tokenCount: this.tokenCount(chunk.content),
     };
   }
 
-  private withSectionContext(content: string, sectionPath: string[], previousPath?: string[]): string {
-    if (previousPath && this.samePath(previousPath, sectionPath)) return content;
+  private withSectionContext(
+    content: string,
+    sectionPath: string[],
+    previousPath?: string[],
+  ): string {
+    if (previousPath && this.samePath(previousPath, sectionPath))
+      return content;
     const context = this.sectionContext(sectionPath);
     return context ? `${context}${content}` : content;
   }
@@ -230,17 +266,27 @@ export class ChunkingService {
     return sectionPath.slice(0, -1).join('\u0000');
   }
 
-  private addPath(paths: string[][], path: string[]): string[][] {
-    return paths.some((item) => this.samePath(item, path)) ? paths : [...paths, path];
+  private addPathKey(keys: string[], path: string[]): string[] {
+    const key = this.pathKey(path);
+    return keys.includes(key) ? keys : [...keys, key];
+  }
+
+  private pathKey(path: string[]): string {
+    return JSON.stringify(path);
   }
 
   private samePath(left: string[], right: string[]): boolean {
-    return left.length === right.length && left.every((value, index) => value === right[index]);
+    return (
+      left.length === right.length &&
+      left.every((value, index) => value === right[index])
+    );
   }
 
   private overlapText(content: string): string {
     const tokens = encode(content);
-    return decode(tokens.slice(Math.max(0, tokens.length - this.overlapTokens)));
+    return decode(
+      tokens.slice(Math.max(0, tokens.length - this.overlapTokens)),
+    );
   }
 
   private tokenCount(content: string): number {
@@ -248,6 +294,8 @@ export class ChunkingService {
   }
 
   private numberAttr(value: unknown, fallback: number): number {
-    return typeof value === 'number' && Number.isInteger(value) ? value : fallback;
+    return typeof value === 'number' && Number.isInteger(value)
+      ? value
+      : fallback;
   }
 }

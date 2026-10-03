@@ -61,6 +61,11 @@ export const ragApi = {
   createChunks: (knowledgeBaseId: string, documentId: string) =>
     request<ChunkItem[]>(`${documentPath(knowledgeBaseId, documentId)}/chunks`, { method: 'POST' }),
 
+  embedDocument: (knowledgeBaseId: string, documentId: string) =>
+    request<{ count: number }>(`${documentPath(knowledgeBaseId, documentId)}/embedding`, {
+      method: 'POST',
+    }),
+
   originalFileUrl: (knowledgeBaseId: string, documentId: string) =>
     `${documentPath(knowledgeBaseId, documentId)}/file`,
 }

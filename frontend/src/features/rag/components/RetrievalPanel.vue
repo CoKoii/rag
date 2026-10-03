@@ -56,11 +56,11 @@ const run = () => {
         <div class="result-meta">
           <span class="rank-number">{{ index + 1 }}</span
           ><strong>{{ result.documentName }}</strong
-          ><span class="muted-cell">{{ result.sectionPaths.flat().join(' → ') }}</span
+          >
           ><span class="score">模拟分 {{ result.score }}</span>
         </div>
         <p>{{ result.content }}</p>
-        <small>Chunk {{ result.index }} · {{ result.tokenCount }} tokens</small>
+        <small>Chunk {{ result.index }}</small>
       </article>
     </div>
     <div v-else-if="!loading && hasRun" class="empty-state compact">

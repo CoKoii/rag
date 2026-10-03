@@ -23,6 +23,8 @@ const {
   creatingBase,
   documents,
   documentCounts,
+  embedDocument,
+  embeddingDocumentId,
   error,
   filteredChunks,
   knowledgeBases,
@@ -144,12 +146,14 @@ const selectFiles = (event: Event) => {
         :loading="loading"
         :uploading="uploading"
         :has-knowledge-base="Boolean(selectedBaseId)"
+        :embedding-document-id="embeddingDocumentId"
         @pick="openFilePicker"
         @upload="uploadFiles"
         @chunks="openChunks"
         @original="openOriginal"
         @parse="openParse"
         @chunk="runChunking"
+        @embedding="embedDocument"
         @remove="removeDocument"
       />
       <RetrievalPanel

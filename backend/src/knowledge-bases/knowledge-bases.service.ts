@@ -13,6 +13,8 @@ import { DocumentParseResponseDto } from './dto/document-parse-response.dto.js';
 import { DocumentResponseDto } from './dto/document-response.dto.js';
 import { ChunkResponseDto } from './dto/chunk-response.dto.js';
 import { ChunkingService } from './chunking/chunking.service.js';
+import { QwenEmbeddingService } from './embedding/qwen-embedding.service.js';
+import { QdrantService } from '../qdrant.service.js';
 import { ChunkEntity } from './entities/chunk.entity.js';
 import { DocumentEntity, DocumentStatus } from './entities/document.entity.js';
 import { KnowledgeBaseEntity } from './entities/knowledge-base.entity.js';
@@ -31,6 +33,8 @@ export class KnowledgeBasesService {
     @InjectRepository(ChunkEntity)
     private readonly chunkRepository: Repository<ChunkEntity>,
     private readonly chunking: ChunkingService,
+    private readonly embedding: QwenEmbeddingService,
+    private readonly qdrant: QdrantService,
   ) {}
 
   async create(dto: CreateKnowledgeBaseDto) {
@@ -108,8 +112,6 @@ export class KnowledgeBasesService {
           documentId,
           index,
           content: draft.content,
-          sectionPaths: draft.sectionPaths,
-          tokenCount: draft.tokenCount,
         }),
       );
       const savedChunks = chunks.length ? await repository.save(chunks) : [];
@@ -117,6 +119,33 @@ export class KnowledgeBasesService {
         this.toChunkResponse(chunk, document.originalName),
       );
     });
+  }
+
+  async embedDocument(
+    knowledgeBaseId: string,
+    documentId: string,
+  ): Promise<{ count: number }> {
+    const document = await this.getDocument(knowledgeBaseId, documentId);
+    const chunks = await this.chunkRepository.find({
+      where: { documentId },
+      order: { index: 'ASC' },
+    });
+    if (!chunks.length) throw new BadRequestException('请先切片文档');
+
+    const points = await Promise.all(
+      chunks.map(async (chunk) => ({
+        id: chunk.id,
+        vector: isImageFile(document.originalName)
+          ? await this.embedding.embedImage(
+              await this.storage.read(document.storagePath),
+              contentTypeOf(document.originalName),
+            )
+          : await this.embedding.embedText(chunk.content),
+        content: chunk.content,
+      })),
+    );
+    await this.qdrant.replaceDocument(documentId, points);
+    return { count: points.length };
   }
 
   async createDocument(
@@ -256,8 +285,6 @@ export class KnowledgeBasesService {
       documentName,
       index: chunk.index,
       content: chunk.content,
-      sectionPaths: chunk.sectionPaths,
-      tokenCount: chunk.tokenCount,
     };
   }
 }
@@ -270,6 +297,9 @@ const normalizeFileName = (name: string): string => {
   return decoded.includes('\ufffd') ? name : decoded;
 };
 
+const isImageFile = (name: string): boolean =>
+  ['.png', '.jpg', '.jpeg', '.webp'].includes(extname(name).toLowerCase());
+
 const contentTypeOf = (name: string): string => {
   switch (extname(name).toLowerCase()) {
     case '.md':
@@ -277,8 +307,13 @@ const contentTypeOf = (name: string): string => {
       return 'text/markdown; charset=utf-8';
     case '.txt':
       return 'text/plain; charset=utf-8';
-    case '.pdf':
-      return 'application/pdf';
+    case '.png':
+      return 'image/png';
+    case '.jpg':
+    case '.jpeg':
+      return 'image/jpeg';
+    case '.webp':
+      return 'image/webp';
     default:
       return 'application/octet-stream';
   }

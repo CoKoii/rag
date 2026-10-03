@@ -21,6 +21,7 @@ export function useRagWorkspace() {
   const selectedDocumentId = ref<string | null>(null)
   const loading = ref(true)
   const uploading = ref(false)
+  const embeddingDocumentId = ref<string | null>(null)
   const creatingBase = ref(false)
   const parsing = ref(false)
   const parseLoading = ref(false)
@@ -251,6 +252,20 @@ export function useRagWorkspace() {
     }
   }
 
+  const embedDocument = async (document: DocumentItem) => {
+    const baseId = selectedBaseId.value
+    if (!baseId || embeddingDocumentId.value) return
+    embeddingDocumentId.value = document.id
+    error.value = ''
+    try {
+      await ragApi.embedDocument(baseId, document.id)
+    } catch (cause) {
+      error.value = errorMessage(cause, 'Embedding 失败')
+    } finally {
+      embeddingDocumentId.value = null
+    }
+  }
+
   const openRetrieval = async () => {
     const baseId = selectedBaseId.value
     view.value = 'retrieval'
@@ -287,6 +302,8 @@ export function useRagWorkspace() {
     creatingBase,
     documents,
     documentCounts,
+    embedDocument,
+    embeddingDocumentId,
     error,
     filteredChunks,
     knowledgeBases,
