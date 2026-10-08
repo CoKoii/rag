@@ -17,6 +17,7 @@ interface MarkdownNode {
   ordered?: boolean;
   start?: number;
   url?: string;
+  alt?: string;
   lang?: string | null;
   children?: MarkdownNode[];
 }
@@ -89,6 +90,15 @@ export class MarkdownParser implements DocumentParser {
           return [createNode('inline-code', {}, [], node.value ?? '')];
         case 'link':
           return [createNode('link', { href: node.url ?? '' }, this.toInlines(node.children ?? []))];
+        case 'image':
+          return [
+            createNode(
+              'text',
+              {},
+              [],
+              `![${node.alt ?? ''}](${node.url ?? ''})`,
+            ),
+          ];
         case 'break':
           return [createNode('line-break')];
         case 'html':

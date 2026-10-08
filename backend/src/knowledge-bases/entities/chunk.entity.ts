@@ -38,4 +38,8 @@ export class ChunkEntity {
   /** 切片正文。 */
   @Column({ type: 'text', comment: '切片正文' })
   content!: string;
+
+  /** 用于 PostgreSQL 全文检索的预处理词项。 */
+  @Column({ name: 'keyword_terms', type: 'text', default: '' })
+  keywordTerms!: string;
 }

@@ -10,6 +10,8 @@ import { DocumentParseService } from './parse/parse.service.js';
 import { ChunkingService } from './chunking/chunking.service.js';
 import { QdrantModule } from '../qdrant.module.js';
 import { QwenEmbeddingService } from './embedding/qwen-embedding.service.js';
+import { KeywordSearchService } from './retrieval/keyword-search.service.js';
+import { QwenRerankService } from './retrieval/qwen-rerank.service.js';
 
 @Module({
   imports: [
@@ -27,6 +29,8 @@ import { QwenEmbeddingService } from './embedding/qwen-embedding.service.js';
     DocumentParseService,
     ChunkingService,
     QwenEmbeddingService,
+    KeywordSearchService,
+    QwenRerankService,
   ],
 })
 export class KnowledgeBasesModule {}

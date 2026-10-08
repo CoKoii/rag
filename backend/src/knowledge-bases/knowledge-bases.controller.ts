@@ -15,7 +15,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { CreateKnowledgeBaseDto } from './dto/create-knowledge-base.dto.js';
-import type { RetrieveRequestDto } from './dto/retrieve-request.dto.js';
+import { RetrieveRequestDto } from './dto/retrieve-request.dto.js';
 import { KnowledgeBasesService } from './knowledge-bases.service.js';
 
 const allowedExtensions = new Set(['md', 'markdown']);

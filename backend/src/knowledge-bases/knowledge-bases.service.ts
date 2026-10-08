@@ -21,6 +21,10 @@ import { DocumentEntity, DocumentStatus } from './entities/document.entity.js';
 import { KnowledgeBaseEntity } from './entities/knowledge-base.entity.js';
 import { LocalStorageService } from './local-storage.service.js';
 import { DocumentParseService } from './parse/parse.service.js';
+import { buildKeywordTerms } from './retrieval/keyword-terms.js';
+import { KeywordSearchService } from './retrieval/keyword-search.service.js';
+import { QwenRerankService } from './retrieval/qwen-rerank.service.js';
+import { reciprocalRankFusion } from './retrieval/rank-fusion.js';
 
 @Injectable()
 export class KnowledgeBasesService {
@@ -36,6 +40,8 @@ export class KnowledgeBasesService {
     private readonly chunking: ChunkingService,
     private readonly embedding: QwenEmbeddingService,
     private readonly qdrant: QdrantService,
+    private readonly keywordSearch: KeywordSearchService,
+    private readonly reranker: QwenRerankService,
   ) {}
 
   async create(dto: CreateKnowledgeBaseDto) {
@@ -114,6 +120,7 @@ export class KnowledgeBasesService {
             documentId,
             index,
             content: draft.content,
+            keywordTerms: buildKeywordTerms(draft.content),
           }),
         );
         return chunks.length ? repository.save(chunks) : [];
@@ -159,46 +166,58 @@ export class KnowledgeBasesService {
     if (!query) throw new BadRequestException('请输入检索问题');
 
     const topK = Math.min(Math.max(Math.trunc(request.topK ?? 5), 1), 20);
-    const vector = await this.embedding.embedText(query);
-    const candidateLimit = Math.min(topK * 5, 100);
-    const matches = await this.qdrant.search(
-      knowledgeBaseId,
-      vector,
-      candidateLimit,
-    );
-    const seenChunkIds = new Set<string>();
-    const uniqueMatches = matches
-      .filter(({ payload }) => {
-        if (seenChunkIds.has(payload.chunkId)) return false;
-        seenChunkIds.add(payload.chunkId);
-        return true;
-      })
-      .slice(0, topK);
-    if (!uniqueMatches.length) return [];
+    const candidateLimit = Math.min(topK * 10, 100);
+    const [vectorMatches, keywordMatches] = await Promise.all([
+      this.embedding
+        .embedText(query)
+        .then((vector) =>
+          this.qdrant.search(knowledgeBaseId, vector, candidateLimit),
+        ),
+      this.keywordSearch.search(knowledgeBaseId, query, candidateLimit),
+    ]);
+    const fused = reciprocalRankFusion(
+      vectorMatches.map(({ payload }) => payload.chunkId),
+      keywordMatches.map(({ chunkId }) => chunkId),
+    ).slice(0, candidateLimit);
+    if (!fused.length) return [];
 
-    const documentIds = [
-      ...new Set(uniqueMatches.map(({ payload }) => payload.documentId)),
-    ];
+    const chunks = await this.chunkRepository.findBy({
+      id: In(fused.map(({ chunkId }) => chunkId)),
+    });
+    const chunksById = new Map(chunks.map((chunk) => [chunk.id, chunk]));
+    const candidates = fused.flatMap(({ chunkId }) => {
+      const chunk = chunksById.get(chunkId);
+      return chunk ? [{ chunkId, content: chunk.content, chunk }] : [];
+    });
+    if (!candidates.length) return [];
+
+    const reranked = await this.reranker.rerank(
+      query,
+      candidates.map(({ content }) => content),
+    );
     const documents = await this.documentRepository.findBy({
-      id: In(documentIds),
+      id: In(candidates.map(({ chunk }) => chunk.documentId)),
     });
     const documentNames = new Map(
       documents.map(({ id, originalName }) => [id, originalName]),
     );
-    const chunks = await this.chunkRepository.findBy({
-      id: In(uniqueMatches.map(({ payload }) => payload.chunkId)),
-    });
-    const chunkIndexes = new Map(chunks.map(({ id, index }) => [id, index]));
 
-    return uniqueMatches.map(({ id, score, payload }) => ({
-      id,
-      score,
-      documentId: payload.documentId,
-      documentName: documentNames.get(payload.documentId) ?? '未知文档',
-      chunkId: payload.chunkId,
-      index: chunkIndexes.get(payload.chunkId) ?? 0,
-      content: payload.content,
-    }));
+    return reranked.slice(0, topK).flatMap(({ index, score }) => {
+      const candidate = candidates[index];
+      if (!candidate) return [];
+      return [
+        {
+          id: candidate.chunkId,
+          score,
+          documentId: candidate.chunk.documentId,
+          documentName:
+            documentNames.get(candidate.chunk.documentId) ?? '未知文档',
+          chunkId: candidate.chunkId,
+          index: candidate.chunk.index,
+          content: candidate.content,
+        },
+      ];
+    });
   }
   async createDocument(
     knowledgeBaseId: string,
