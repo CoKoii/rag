@@ -1,4 +1,10 @@
-import type { ChunkItem, DocumentResponse, KnowledgeBase, ParseResult } from './types'
+import type {
+  ChunkItem,
+  DocumentResponse,
+  KnowledgeBase,
+  ParseResult,
+  RetrievalResult,
+} from './types'
 
 const request = async <T>(url: string, options?: RequestInit): Promise<T> => {
   const response = await fetch(url, options)
@@ -24,8 +30,11 @@ const request = async <T>(url: string, options?: RequestInit): Promise<T> => {
   return body as T
 }
 
+const knowledgeBasePath = (knowledgeBaseId: string) =>
+  `/api/knowledge-bases/${encodeURIComponent(knowledgeBaseId)}`
+
 const documentPath = (knowledgeBaseId: string, documentId = '') =>
-  `/api/knowledge-bases/${encodeURIComponent(knowledgeBaseId)}/documents${documentId ? `/${encodeURIComponent(documentId)}` : ''}`
+  `${knowledgeBasePath(knowledgeBaseId)}/documents${documentId ? `/${encodeURIComponent(documentId)}` : ''}`
 
 export const ragApi = {
   listKnowledgeBases: () => request<KnowledgeBase[]>('/api/knowledge-bases'),
@@ -64,6 +73,13 @@ export const ragApi = {
   embedDocument: (knowledgeBaseId: string, documentId: string) =>
     request<{ count: number }>(`${documentPath(knowledgeBaseId, documentId)}/embedding`, {
       method: 'POST',
+    }),
+
+  retrieve: (knowledgeBaseId: string, query: string, topK: number) =>
+    request<RetrievalResult[]>(`${knowledgeBasePath(knowledgeBaseId)}/retrieval`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ query, topK }),
     }),
 
   originalFileUrl: (knowledgeBaseId: string, documentId: string) =>

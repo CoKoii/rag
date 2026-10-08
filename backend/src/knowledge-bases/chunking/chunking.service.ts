@@ -7,12 +7,10 @@ import type {
 
 export interface ChunkDraft {
   content: string;
-  imageSources: string[];
 }
 
 interface ChunkUnit {
   content: string;
-  imageSources: string[];
   sectionPath: string[];
   mergeKey: string;
   mergeable: boolean;
@@ -20,7 +18,6 @@ interface ChunkUnit {
 
 interface WorkingChunk {
   content: string;
-  imageSources: string[];
   sectionPathKeys: string[];
   lastSectionPath: string[];
   mergeKey: string;
@@ -59,9 +56,6 @@ export class ChunkingService {
       const merged = `${current.content}\n\n${content}`;
       if (this.tokenCount(merged) <= this.maxTokens) {
         current.content = merged;
-        current.imageSources = [
-          ...new Set([...current.imageSources, ...unit.imageSources]),
-        ];
         current.sectionPathKeys = this.addPathKey(
           current.sectionPathKeys,
           unit.sectionPath,
@@ -93,15 +87,10 @@ export class ChunkingService {
       const unitsForNode =
         node.type === 'table'
           ? this.renderTableRows(node)
-          : [
-              {
-                content: this.renderText(node).trim(),
-                imageSources: this.imageSourcesIn(node),
-              },
-            ];
+          : [{ content: this.renderText(node).trim() }];
 
       for (const item of unitsForNode) {
-        if (!item.content && !item.imageSources.length) continue;
+        if (!item.content) continue;
         const unit: ChunkUnit = {
           ...item,
           sectionPath: [...sectionPath],
@@ -181,8 +170,6 @@ export class ChunkingService {
 
   private renderText(node: ParsedNode): string {
     if (node.type === 'code-block' && node.text !== undefined) return node.text;
-    if (node.type === 'image')
-      return typeof node.attrs.alt === 'string' ? node.attrs.alt : '';
     if (node.type === 'list') return this.renderList(node);
     if (node.type === 'list-item')
       return node.children.map((child) => this.renderText(child)).join('\n');
@@ -207,9 +194,7 @@ export class ChunkingService {
       .join('\n');
   }
 
-  private renderTableRows(
-    node: ParsedNode,
-  ): Array<{ content: string; imageSources: string[] }> {
+  private renderTableRows(node: ParsedNode): Array<{ content: string }> {
     const rows = node.children.filter((child) => child.type === 'table-row');
     if (!rows.length) return [];
 
@@ -223,19 +208,8 @@ export class ChunkingService {
         const label = headers[index] || `第${index + 1}列`;
         return `${label}：${this.renderText(cell).trim()}`;
       });
-      return {
-        content: ['表格：', ...fields].join('\n'),
-        imageSources: this.imageSourcesIn(row),
-      };
+      return { content: ['表格：', ...fields].join('\n') };
     });
-  }
-
-  private imageSourcesIn(node: ParsedNode): string[] {
-    const source = node.type === 'image' ? node.attrs.src : undefined;
-    return [
-      ...(typeof source === 'string' && source ? [source] : []),
-      ...node.children.flatMap((child) => this.imageSourcesIn(child)),
-    ];
   }
 
   private canMerge(chunk: WorkingChunk, unit: ChunkUnit): boolean {
@@ -250,7 +224,6 @@ export class ChunkingService {
   private startChunk(unit: ChunkUnit): WorkingChunk {
     return {
       content: this.withSectionContext(unit.content, unit.sectionPath),
-      imageSources: [...new Set(unit.imageSources)],
       sectionPathKeys: [this.pathKey(unit.sectionPath)],
       lastSectionPath: unit.sectionPath,
       mergeKey: unit.mergeKey,
@@ -263,10 +236,7 @@ export class ChunkingService {
   }
 
   private toDraft(chunk: WorkingChunk): ChunkDraft {
-    return {
-      content: chunk.content,
-      imageSources: chunk.imageSources,
-    };
+    return { content: chunk.content };
   }
 
   private withSectionContext(

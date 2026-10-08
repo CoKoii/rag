@@ -39,9 +39,11 @@ const {
   parsedData,
   parsing,
   retrievalLoading,
+  retrievalResults,
   removeDocument,
   runChunking,
   runParse,
+  runRetrieval,
   selectBase,
   selectedBase,
   selectedBaseId,
@@ -158,8 +160,9 @@ const selectFiles = (event: Event) => {
       />
       <RetrievalPanel
         v-else-if="view === 'retrieval'"
-        :chunks="chunks"
+        :results="retrievalResults"
         :loading="retrievalLoading"
+        @retrieve="runRetrieval"
       />
       <ChunkPanel
         v-else

@@ -37,7 +37,7 @@ const formattedData = computed(() => (props.data ? JSON.stringify(props.data, nu
           ×
         </button>
       </div>
-      <p class="parse-description">文档解析为统一树形 JSON；图片由 Qwen 多模态模型提取文字和语义。</p>
+      <p class="parse-description">解析 Markdown 标题、段落、列表、表格和代码块，生成统一文档结构。</p>
       <p v-if="error" class="error-banner">{{ error }}</p>
       <div v-if="loading" class="empty-state compact">
         <strong>正在读取解析结果</strong><span>请稍候。</span>

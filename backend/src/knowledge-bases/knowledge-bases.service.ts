@@ -6,11 +6,13 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'node:crypto';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { CreateKnowledgeBaseDto } from './dto/create-knowledge-base.dto.js';
 import { DocumentParseResponseDto } from './dto/document-parse-response.dto.js';
 import { DocumentResponseDto } from './dto/document-response.dto.js';
 import { ChunkResponseDto } from './dto/chunk-response.dto.js';
+import { RetrieveRequestDto } from './dto/retrieve-request.dto.js';
+import { RetrievalResultDto } from './dto/retrieval-result.dto.js';
 import { ChunkingService } from './chunking/chunking.service.js';
 import { QwenEmbeddingService } from './embedding/qwen-embedding.service.js';
 import { QdrantService } from '../qdrant.service.js';
@@ -112,7 +114,6 @@ export class KnowledgeBasesService {
             documentId,
             index,
             content: draft.content,
-            imageSources: draft.imageSources,
           }),
         );
         return chunks.length ? repository.save(chunks) : [];
@@ -135,43 +136,70 @@ export class KnowledgeBasesService {
     });
     if (!chunks.length) throw new BadRequestException('请先切片文档');
 
-    const points = (
-      await Promise.all(
-        chunks.map(async (chunk) => {
-          if (!chunk.imageSources.length) {
-            return [
-              {
-                id: chunk.id,
-                vector: await this.embedding.embedText(chunk.content),
-                documentId,
-                chunkId: chunk.id,
-                content: chunk.content,
-              },
-            ];
-          }
-
-          return Promise.all(
-            chunk.imageSources.map(async (source, index) => {
-              const result = await this.embedding.embedTextImage(
-                chunk.content,
-                source,
-              );
-              return {
-                id: index === 0 ? chunk.id : randomUUID(),
-                vector: result.vector,
-                documentId,
-                chunkId: chunk.id,
-                content: result.content,
-              };
-            }),
-          );
-        }),
-      )
-    ).flat();
+    const points = await Promise.all(
+      chunks.map(async (chunk) => ({
+        id: chunk.id,
+        vector: await this.embedding.embedText(chunk.content),
+        knowledgeBaseId,
+        documentId,
+        chunkId: chunk.id,
+        content: chunk.content,
+      })),
+    );
     await this.qdrant.replaceDocument(documentId, points);
     return { count: points.length };
   }
 
+  async retrieve(
+    knowledgeBaseId: string,
+    request: RetrieveRequestDto,
+  ): Promise<RetrievalResultDto[]> {
+    await this.getKnowledgeBase(knowledgeBaseId);
+    const query = request.query.trim();
+    if (!query) throw new BadRequestException('请输入检索问题');
+
+    const topK = Math.min(Math.max(Math.trunc(request.topK ?? 5), 1), 20);
+    const vector = await this.embedding.embedText(query);
+    const candidateLimit = Math.min(topK * 5, 100);
+    const matches = await this.qdrant.search(
+      knowledgeBaseId,
+      vector,
+      candidateLimit,
+    );
+    const seenChunkIds = new Set<string>();
+    const uniqueMatches = matches
+      .filter(({ payload }) => {
+        if (seenChunkIds.has(payload.chunkId)) return false;
+        seenChunkIds.add(payload.chunkId);
+        return true;
+      })
+      .slice(0, topK);
+    if (!uniqueMatches.length) return [];
+
+    const documentIds = [
+      ...new Set(uniqueMatches.map(({ payload }) => payload.documentId)),
+    ];
+    const documents = await this.documentRepository.findBy({
+      id: In(documentIds),
+    });
+    const documentNames = new Map(
+      documents.map(({ id, originalName }) => [id, originalName]),
+    );
+    const chunks = await this.chunkRepository.findBy({
+      id: In(uniqueMatches.map(({ payload }) => payload.chunkId)),
+    });
+    const chunkIndexes = new Map(chunks.map(({ id, index }) => [id, index]));
+
+    return uniqueMatches.map(({ id, score, payload }) => ({
+      id,
+      score,
+      documentId: payload.documentId,
+      documentName: documentNames.get(payload.documentId) ?? '未知文档',
+      chunkId: payload.chunkId,
+      index: chunkIndexes.get(payload.chunkId) ?? 0,
+      content: payload.content,
+    }));
+  }
   async createDocument(
     knowledgeBaseId: string,
     file: Express.Multer.File,
@@ -311,7 +339,6 @@ export class KnowledgeBasesService {
       documentName,
       index: chunk.index,
       content: chunk.content,
-      imageSources: chunk.imageSources,
     };
   }
 }

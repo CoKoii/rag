@@ -6,6 +6,7 @@ import type {
   KnowledgeBase,
   ParsedDocument,
   ParseResult,
+  RetrievalResult,
   WorkspaceView,
 } from '../types'
 
@@ -27,6 +28,7 @@ export function useRagWorkspace() {
   const parseLoading = ref(false)
   const chunksLoading = ref(false)
   const retrievalLoading = ref(false)
+  const retrievalResults = ref<RetrievalResult[]>([])
   const createDialogOpen = ref(false)
   const parseDialogOpen = ref(false)
   const error = ref('')
@@ -266,19 +268,22 @@ export function useRagWorkspace() {
     }
   }
 
-  const openRetrieval = async () => {
-    const baseId = selectedBaseId.value
+  const openRetrieval = () => {
     view.value = 'retrieval'
+    retrievalResults.value = []
     error.value = ''
-    if (!baseId) return
+  }
+
+  const runRetrieval = async (query: string, topK: number) => {
+    const baseId = selectedBaseId.value
+    if (!baseId || retrievalLoading.value) return
     retrievalLoading.value = true
+    error.value = ''
     try {
-      const results = await Promise.all(
-        (documentsByBase.value[baseId] ?? []).map(({ id }) => ragApi.listChunks(baseId, id)),
-      )
-      chunksByBase.value[baseId] = results.flat()
+      retrievalResults.value = await ragApi.retrieve(baseId, query, topK)
     } catch (cause) {
-      error.value = errorMessage(cause, '加载召回测试数据失败')
+      retrievalResults.value = []
+      error.value = errorMessage(cause, '召回失败')
     } finally {
       retrievalLoading.value = false
     }
@@ -320,7 +325,9 @@ export function useRagWorkspace() {
     removeDocument,
     openRetrieval,
     retrievalLoading,
+    retrievalResults,
     runChunking,
+    runRetrieval,
     runParse,
     selectBase,
     selectedBase,

@@ -15,6 +15,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { CreateKnowledgeBaseDto } from './dto/create-knowledge-base.dto.js';
+import type { RetrieveRequestDto } from './dto/retrieve-request.dto.js';
 import { KnowledgeBasesService } from './knowledge-bases.service.js';
 
 const allowedExtensions = new Set(['md', 'markdown']);
@@ -31,6 +32,14 @@ export class KnowledgeBasesController {
   @Get()
   findAll() {
     return this.knowledgeBases.findAll();
+  }
+
+  @Post(':knowledgeBaseId/retrieval')
+  retrieve(
+    @Param('knowledgeBaseId') knowledgeBaseId: string,
+    @Body() request: RetrieveRequestDto,
+  ) {
+    return this.knowledgeBases.retrieve(knowledgeBaseId, request);
   }
 
   @Get(':knowledgeBaseId/documents')

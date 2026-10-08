@@ -6,9 +6,21 @@ const embeddingVectorSize = 2560;
 export interface VectorPoint {
   id: string;
   vector: number[];
+  knowledgeBaseId: string;
   documentId: string;
   chunkId: string;
   content: string;
+}
+
+export interface VectorSearchResult {
+  id: string;
+  score: number;
+  payload: {
+    knowledgeBaseId: string;
+    documentId: string;
+    chunkId: string;
+    content: string;
+  };
 }
 
 @Injectable()
@@ -54,12 +66,35 @@ export class QdrantService implements OnModuleInit {
 
     await this.client.upsert(this.collection, {
       wait: true,
-      points: points.map(({ id, vector, documentId, chunkId, content }) => ({
-        id,
-        vector,
-        payload: { documentId, chunkId, content },
-      })),
+      points: points.map(
+        ({ id, vector, knowledgeBaseId, documentId, chunkId, content }) => ({
+          id,
+          vector,
+          payload: { knowledgeBaseId, documentId, chunkId, content },
+        }),
+      ),
     });
+  }
+
+  async search(
+    knowledgeBaseId: string,
+    vector: number[],
+    limit: number,
+  ): Promise<VectorSearchResult[]> {
+    if (!(await this.collectionExists())) return [];
+    const response = await this.client.query(this.collection, {
+      query: vector,
+      limit,
+      with_payload: true,
+      filter: {
+        must: [{ key: 'knowledgeBaseId', match: { value: knowledgeBaseId } }],
+      },
+    });
+    return response.points.map((result) => ({
+      id: String(result.id),
+      score: result.score,
+      payload: result.payload as VectorSearchResult['payload'],
+    }));
   }
 
   private async deleteDocumentPoints(documentId: string): Promise<void> {

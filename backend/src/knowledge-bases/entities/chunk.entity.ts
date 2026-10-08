@@ -8,7 +8,7 @@ import {
 } from 'typeorm';
 import { DocumentEntity } from './document.entity.js';
 
-/** Markdown 切片表：保存正文及多模态 embedding 所需的图片引用。 */
+/** Markdown 文本切片表。 */
 @Entity({ name: 'document_chunks', comment: '文档切片表' })
 @Index('document_chunks_document_id_idx', ['documentId'])
 export class ChunkEntity {
@@ -38,13 +38,4 @@ export class ChunkEntity {
   /** 切片正文。 */
   @Column({ type: 'text', comment: '切片正文' })
   content!: string;
-
-  /** 切片关联的 Markdown 图片地址。 */
-  @Column({
-    name: 'image_sources',
-    type: 'jsonb',
-    default: [],
-    comment: '切片关联图片地址',
-  })
-  imageSources!: string[];
 }

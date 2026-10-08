@@ -20,7 +20,16 @@ export interface ChunkItem {
   documentName: string
   index: number
   content: string
-  imageSources: string[]
+}
+
+export interface RetrievalResult {
+  id: string
+  score: number
+  documentId: string
+  documentName: string
+  chunkId: string
+  index: number
+  content: string
 }
 
 export interface ParsedNode {
